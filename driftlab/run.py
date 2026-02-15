@@ -54,6 +54,18 @@ def run_drift_analysis(
     text_columns = config.get('text_columns', None)
     column_mapping = config.get('column_mapping', None)
     
+    # Filter out text columns for Evidently (it has issues with text processing)
+    column_types = config.get('column_types', {})
+    text_cols_set = set(text_columns or [])
+    # Also detect text columns from column_types
+    for col, col_type in column_types.items():
+        if col_type == 'text':
+            text_cols_set.add(col)
+    
+    # Create dataframes without text columns for Evidently
+    ref_df_tabular = ref_df.drop(columns=[c for c in text_cols_set if c in ref_df.columns], errors='ignore')
+    cur_df_tabular = cur_df.drop(columns=[c for c in text_cols_set if c in cur_df.columns], errors='ignore')
+    
     # Run profiles
     tabular_profile = TabularProfile(column_mapping=column_mapping)
     tabular_results = tabular_profile.run(ref_df, cur_df)
@@ -61,9 +73,9 @@ def run_drift_analysis(
     text_profile = TextProfile(text_columns=text_columns)
     text_results = text_profile.run(ref_df, cur_df)
     
-    # Generate Evidently report
+    # Generate Evidently report (only on non-text columns)
     evidently_results = generate_evidently_report(
-        ref_df, cur_df, output_dir, column_mapping=column_mapping
+        ref_df_tabular, cur_df_tabular, output_dir, column_mapping=column_mapping
     )
     
     # Combine all metrics
@@ -121,6 +133,11 @@ def run_drift_analysis(
     save_json_report(summary, str(output_path / "drift_summary.json"))
     
     # Print alerts
+    print(f"\n=== Drift Analysis Complete ===")
+    print(f"Report saved to: {output_path}")
+    print(f"HTML report: {evidently_results.get('html_path')}")
+    print(f"JSON summary: {output_path / 'drift_summary.json'}")
+    
     if all_alerts:
         alert_messages = []
         for alert in all_alerts:
@@ -128,12 +145,13 @@ def run_drift_analysis(
                 metric_name = alert.get("metric_name", "unknown")
                 message = alert.get("message", "Drift detected")
                 # Format for specific columns
-                if "payload_bytes" in metric_name or "run_duration_ms" in metric_name:
+                if "payload_bytes" in str(metric_name) or "run_duration_ms" in str(metric_name):
                     alert_messages.append(f"ALERT: drift in {metric_name} exceeded threshold")
                 else:
                     alert_messages.append(f"ALERT: {message}")
         
         if alert_messages:
+            print(f"\n=== Alerts ({len(alert_messages)}) ===")
             print("\n".join(alert_messages))
     else:
-        print("No alerts triggered.")
+        print("\nNo alerts triggered.")

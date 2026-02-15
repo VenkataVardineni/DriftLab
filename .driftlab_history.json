@@ -1,0 +1,39 @@
+[
+  {
+    "profile_type": "tabular",
+    "columns_analyzed": [
+      "payload_bytes",
+      "run_duration_ms",
+      "cpu_usage",
+      "status",
+      "region",
+      "log_message"
+    ],
+    "log_message_text_drift": {
+      "text_drift_score": 0.3421250838823752,
+      "length_shift": 0.2895272474754731,
+      "richness_shift": 4.554035745578145e-05,
+      "ngram_shift": 0.9473684210526316,
+      "embedding_shift": {
+        "embedding_shift_score": 0.0,
+        "centroid_distance": 0.0
+      },
+      "top_shifted_terms": [
+        "debug info",
+        "retry error",
+        "info retry",
+        "success info",
+        "warning retry",
+        "request critical",
+        "info debug",
+        "error info",
+        "debug request"
+      ]
+    },
+    "dataset_drift_score": 0.0,
+    "drifting_columns": [],
+    "drifting_columns_count": 0,
+    "drifting_columns_share": 0.0,
+    "column_drift_scores": {}
+  }
+]

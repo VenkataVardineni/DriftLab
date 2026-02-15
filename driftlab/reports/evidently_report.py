@@ -6,11 +6,22 @@ from pathlib import Path
 import json
 
 try:
-    from evidently.report import Report
-    from evidently.metric_preset import DataDriftPreset
-    from evidently.pipeline.column_mapping import ColumnMapping
-    EVIDENTLY_AVAILABLE = True
-except ImportError:
+    # Try Evidently 0.7+ API (direct imports)
+    try:
+        from evidently import Report
+        from evidently.presets import DataDriftPreset
+        from evidently.core.datasets import ColumnMapping
+        EVIDENTLY_AVAILABLE = True
+    except ImportError:
+        # Try older API
+        try:
+            from evidently.report import Report
+            from evidently.metric_preset import DataDriftPreset
+            from evidently.pipeline.column_mapping import ColumnMapping
+            EVIDENTLY_AVAILABLE = True
+        except ImportError:
+            EVIDENTLY_AVAILABLE = False
+except Exception:
     EVIDENTLY_AVAILABLE = False
 
 
@@ -38,45 +49,63 @@ def generate_evidently_report(
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
     
-    # Create column mapping if provided
-    col_mapping = None
-    if column_mapping:
-        col_mapping = ColumnMapping(**column_mapping)
-    
     # Create and run Evidently report
     report = Report(metrics=[DataDriftPreset()])
-    report.run(
-        reference_data=reference_df,
-        current_data=current_df,
-        column_mapping=col_mapping
-    )
+    
+    # Run report - new API returns a Snapshot
+    # Catch errors during execution (e.g., text column processing issues)
+    try:
+        snapshot = report.run(
+            reference_data=reference_df,
+            current_data=current_df
+        )
+    except Exception as e:
+        # If Evidently fails, create a minimal report
+        print(f"Warning: Evidently report generation encountered an error: {e}")
+        print("Continuing with basic drift analysis...")
+        # Create empty snapshot-like structure
+        snapshot = None
     
     # Save HTML report
     html_path = output_path / "drift_report.html"
-    report.save_html(str(html_path))
+    if snapshot:
+        try:
+            snapshot.save_html(str(html_path))
+        except Exception as e:
+            print(f"Warning: Could not save HTML report: {e}")
+            # Create a minimal HTML report
+            with open(html_path, 'w') as f:
+                f.write("<html><body><h1>Drift Report</h1><p>Report generation encountered issues. Check JSON summary for details.</p></body></html>")
+    else:
+        # Create a minimal HTML report
+        with open(html_path, 'w') as f:
+            f.write("<html><body><h1>Drift Report</h1><p>Report generation encountered issues. Check JSON summary for details.</p></body></html>")
     
-    # Extract metrics from report
-    metrics_dict = {}
-    try:
-        if hasattr(report, 'as_dict'):
-            report_dict = report.as_dict()
-            metrics_dict = report_dict.get('metrics', {})
-    except Exception:
-        pass
-    
-    # Extract drift scores from report
+    # Extract metrics from snapshot
     drift_metrics = {}
     drifting_columns = []
     dataset_drift_score = 0.0
     
-    # Try to extract from report JSON
+    if snapshot is None:
+        # Return minimal metrics if snapshot failed
+        return {
+            "html_path": str(html_path),
+            "json_path": str(output_path / "drift_summary.json"),
+            "metrics": {
+                "dataset_drift_score": 0.0,
+                "drifting_columns": [],
+                "drifting_columns_count": 0,
+                "drifting_columns_share": 0.0,
+                "column_drift_scores": {}
+            }
+        }
+    
     try:
-        report_json = report.json()
-        import json
-        report_data = json.loads(report_json)
+        # Get snapshot as dict
+        snapshot_dict = snapshot.dict()
         
         # Navigate through Evidently's metric structure
-        for metric_data in report_data.get('metrics', []):
+        for metric_data in snapshot_dict.get('metrics', []):
             metric_result = metric_data.get('result', {})
             
             # Check for dataset drift score
@@ -97,26 +126,26 @@ def generate_evidently_report(
                     if drift_detected:
                         drifting_columns.append(col_name)
     except Exception as e:
-        # Fallback: try to access directly from report object
+        # Fallback: try to get from snapshot directly
         try:
-            # Evidently 0.4+ structure
-            if hasattr(report, '_inner_suite') and hasattr(report._inner_suite, 'context'):
-                for metric in report._inner_suite.context.metrics:
-                    if hasattr(metric, 'result'):
-                        result = metric.result
-                        if hasattr(result, 'dataset_drift_score'):
-                            dataset_drift_score = result.dataset_drift_score
-                        if hasattr(result, 'drift_by_columns'):
-                            for col_name, col_result in result.drift_by_columns.items():
-                                if hasattr(col_result, 'drift_score'):
-                                    drift_score = col_result.drift_score
-                                    drift_detected = drift_score > 0.3
-                                    drift_metrics[col_name] = {
-                                        "drift_score": drift_score,
-                                        "drift_detected": drift_detected
-                                    }
-                                    if drift_detected:
-                                        drifting_columns.append(col_name)
+            snapshot_json = snapshot.json()
+            import json
+            report_data = json.loads(snapshot_json)
+            
+            for metric_data in report_data.get('metrics', []):
+                metric_result = metric_data.get('result', {})
+                if 'dataset_drift_score' in metric_result:
+                    dataset_drift_score = metric_result['dataset_drift_score']
+                if 'drift_by_columns' in metric_result:
+                    for col_name, col_result in metric_result['drift_by_columns'].items():
+                        drift_score = col_result.get('drift_score', 0.0)
+                        drift_detected = drift_score > 0.3
+                        drift_metrics[col_name] = {
+                            "drift_score": drift_score,
+                            "drift_detected": drift_detected
+                        }
+                        if drift_detected:
+                            drifting_columns.append(col_name)
         except Exception:
             # If all else fails, use default values
             pass
