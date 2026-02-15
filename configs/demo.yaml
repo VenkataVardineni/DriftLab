@@ -1,0 +1,46 @@
+# DriftLab Configuration
+# Example configuration for drift analysis
+
+# Input file paths (can be overridden via CLI)
+input:
+  reference: data/reference/ref.csv
+  current: data/current/cur.csv
+
+# Column type mapping
+column_types:
+  payload_bytes: numerical
+  run_duration_ms: numerical
+  cpu_usage: numerical
+  status: categorical
+  region: categorical
+  log_message: text
+
+# Text columns for text drift analysis
+text_columns:
+  - log_message
+
+# Evidently column mapping (optional)
+column_mapping:
+  # numerical_features: ["payload_bytes", "run_duration_ms", "cpu_usage"]
+  # categorical_features: ["status", "region"]
+  # text_features: ["log_message"]
+
+# Profiles to run
+profiles:
+  - tabular
+  - text
+
+# Alert rule settings
+alerts:
+  dataset_drift_threshold: 0.5
+  feature_drift_threshold: 0.3
+  consecutive_runs: 3
+
+# History file for threshold calibration and persistence
+history_file: .driftlab_history.json
+
+# Output settings
+output:
+  directory: reports
+  format: [html, json]
+
