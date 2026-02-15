@@ -5,11 +5,15 @@ import pandas as pd
 import numpy as np
 from .base import Profile
 
+# Lazy import for sentence_transformers to avoid dependency issues
+SENTENCE_TRANSFORMERS_AVAILABLE = False
 try:
-    from sentence_transformers import SentenceTransformer
-    SENTENCE_TRANSFORMERS_AVAILABLE = True
-except ImportError:
-    SENTENCE_TRANSFORMERS_AVAILABLE = False
+    import importlib.util
+    spec = importlib.util.find_spec("sentence_transformers")
+    if spec is not None:
+        SENTENCE_TRANSFORMERS_AVAILABLE = True
+except Exception:
+    pass
 
 
 class TextProfile(Profile):
@@ -28,6 +32,7 @@ class TextProfile(Profile):
         self.model = None
         if SENTENCE_TRANSFORMERS_AVAILABLE:
             try:
+                from sentence_transformers import SentenceTransformer
                 self.model = SentenceTransformer(model_name)
             except Exception:
                 self.model = None
