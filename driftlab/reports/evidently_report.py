@@ -1,6 +1,6 @@
 """Evidently-based drift report generation."""
 
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 import pandas as pd
 from pathlib import Path
 import json
@@ -23,6 +23,42 @@ try:
             EVIDENTLY_AVAILABLE = False
 except Exception:
     EVIDENTLY_AVAILABLE = False
+
+
+def _build_evidently_column_mapping(
+    column_mapping: Optional[Dict[str, Any]],
+) -> Optional[Any]:
+    """Map DriftLab YAML keys to Evidently ColumnMapping when the API is available."""
+    if not column_mapping or not EVIDENTLY_AVAILABLE:
+        return None
+    try:
+        from evidently.core.datasets import ColumnMapping as CM  # type: ignore
+    except ImportError:
+        try:
+            from evidently.pipeline.column_mapping import ColumnMapping as CM  # type: ignore
+        except ImportError:
+            return None
+
+    cm = CM()
+    num = column_mapping.get("numerical_features") or column_mapping.get("numerical_columns")
+    cat = column_mapping.get("categorical_features") or column_mapping.get("categorical_columns")
+    txt = column_mapping.get("text_features") or column_mapping.get("text_columns")
+    dt = column_mapping.get("datetime_features") or column_mapping.get("datetime_columns")
+    tgt = column_mapping.get("target")
+    pred = column_mapping.get("prediction") or column_mapping.get("prediction_column")
+    if num:
+        cm.numerical_columns = list(num)
+    if cat:
+        cm.categorical_columns = list(cat)
+    if txt and hasattr(cm, "text_columns"):
+        cm.text_columns = list(txt)
+    if dt and hasattr(cm, "datetime_columns"):
+        cm.datetime_columns = list(dt)
+    if tgt:
+        cm.target = tgt
+    if pred:
+        cm.prediction = pred
+    return cm
 
 
 def generate_evidently_report(
@@ -51,14 +87,28 @@ def generate_evidently_report(
     
     # Create and run Evidently report
     report = Report(metrics=[DataDriftPreset()])
-    
+    col_map = _build_evidently_column_mapping(column_mapping)
+
     # Run report - new API returns a Snapshot
     # Catch errors during execution (e.g., text column processing issues)
     try:
-        snapshot = report.run(
-            reference_data=reference_df,
-            current_data=current_df
-        )
+        if col_map is not None:
+            try:
+                snapshot = report.run(
+                    reference_data=reference_df,
+                    current_data=current_df,
+                    column_mapping=col_map,
+                )
+            except TypeError:
+                snapshot = report.run(
+                    reference_data=reference_df,
+                    current_data=current_df,
+                )
+        else:
+            snapshot = report.run(
+                reference_data=reference_df,
+                current_data=current_df,
+            )
     except Exception as e:
         # If Evidently fails, create a minimal report
         print(f"Warning: Evidently report generation encountered an error: {e}")
