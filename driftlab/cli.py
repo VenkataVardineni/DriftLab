@@ -33,14 +33,10 @@ def main():
     args = parser.parse_args()
     
     if args.command == 'run':
+        from driftlab.config_loader import load_config
         from driftlab.run import run_drift_analysis
-        
-        # Load config if provided
-        config = {}
-        if args.config:
-            import yaml
-            with open(args.config, 'r') as f:
-                config = yaml.safe_load(f)
+
+        config = load_config(args.config)
         
         # Get paths from args or config
         ref_path = args.ref or config.get('input', {}).get('reference')

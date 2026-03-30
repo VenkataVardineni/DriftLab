@@ -6,6 +6,7 @@ from typing import Optional, Dict, Any
 import pandas as pd
 
 from driftlab import __version__
+from driftlab.config_loader import load_config
 from driftlab.logutil import configure_logging, get_logger
 from driftlab.fingerprint import fingerprint_pair
 from driftlab.io.load import load_dataframe
@@ -40,12 +41,7 @@ def run_drift_analysis(
     logger = get_logger(__name__)
     started_at = datetime.now(timezone.utc).isoformat()
 
-    # Load configuration if provided
-    config = {}
-    if config_path:
-        import yaml
-        with open(config_path, 'r') as f:
-            config = yaml.safe_load(f)
+    config = load_config(config_path)
     
     # Load datasets
     ref_df = load_dataframe(ref_path)
