@@ -1,9 +1,11 @@
 """Main drift analysis runner."""
 
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Dict, Any
 import pandas as pd
 
+from driftlab import __version__
 from driftlab.logutil import configure_logging, get_logger
 from driftlab.io.load import load_dataframe
 from driftlab.io.schema import Schema
@@ -21,7 +23,7 @@ def run_drift_analysis(
     output_dir: str,
     config_path: Optional[str] = None,
     log_level: Optional[str] = None,
-) -> None:
+) -> Dict[str, Any]:
     """
     Run complete drift analysis pipeline.
 
@@ -34,6 +36,7 @@ def run_drift_analysis(
     """
     configure_logging(log_level)
     logger = get_logger(__name__)
+    started_at = datetime.now(timezone.utc).isoformat()
 
     # Load configuration if provided
     config = {}
@@ -120,8 +123,13 @@ def run_drift_analysis(
         alerts = rule.evaluate(all_metrics)
         all_alerts.extend(alerts)
     
-    # Save summary
+    completed_at = datetime.now(timezone.utc).isoformat()
     summary = {
+        "meta": {
+            "driftlab_version": __version__,
+            "started_at": started_at,
+            "completed_at": completed_at,
+        },
         "run_id": output_path.name,
         "reference_path": ref_path,
         "current_path": cur_path,
@@ -136,7 +144,7 @@ def run_drift_analysis(
             "json": str(output_path / "drift_summary.json")
         }
     }
-    
+
     save_json_report(summary, str(output_path / "drift_summary.json"))
     
     logger.info("Drift analysis complete; output_dir=%s", output_path)
@@ -158,6 +166,8 @@ def run_drift_analysis(
             logger.warning("Alerts (%d):\n%s", len(alert_messages), "\n".join(alert_messages))
     else:
         logger.info("No alerts triggered.")
+
+    return summary
 
 
 if __name__ == "__main__":
