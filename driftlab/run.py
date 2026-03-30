@@ -156,3 +156,16 @@ def run_drift_analysis(
             print("\n".join(alert_messages))
     else:
         print("\nNo alerts triggered.")
+
+
+if __name__ == "__main__":
+    import sys
+    from driftlab.cli import main as cli_main
+
+    argv = sys.argv[1:]
+    if argv and argv[0] not in ("run", "generate"):
+        argv = ["run", *argv]
+    elif not argv:
+        argv = ["run", "-h"]
+    sys.argv = ["driftlab", *argv]
+    cli_main()
