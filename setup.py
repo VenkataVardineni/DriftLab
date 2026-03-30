@@ -7,7 +7,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="driftlab",
-    version="0.1.0",
+    version="0.2.0",
     author="DriftLab Team",
     description="Production-grade ML monitoring toolkit for drift detection",
     long_description=long_description,
@@ -25,6 +25,9 @@ setup(
         "console_scripts": [
             "driftlab=driftlab.cli:main",
         ],
+    },
+    extras_require={
+        "parquet": ["pyarrow>=10.0.0"],
     },
 )
 
