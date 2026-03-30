@@ -1,10 +1,10 @@
 # DriftLab
 
-Production-grade ML monitoring toolkit that generates interactive drift reports (tabular + text), tracks prediction drift, and produces automated alert rules + dashboards you can plug into any model pipeline.
+Production-grade ML monitoring toolkit that generates interactive drift reports (tabular + text), tracks **prediction / score drift**, and produces automated alert rules, optional **Prometheus** textfile metrics, and JSON summaries you can plug into any model pipeline.
 
 ## Overview
 
-DriftLab is a comprehensive machine learning monitoring solution designed to detect data drift in production ML systems. It supports both tabular and text data, provides interactive HTML reports, and includes intelligent alerting with calibrated thresholds and persistence tracking.
+DriftLab detects data drift in production ML systems. It supports **CSV and Parquet** inputs, tabular and text features, interactive HTML reports via [Evidently AI](https://www.evidentlyai.com/), and alerting with **separate** calibration history vs feature-persistence state. Runs emit **structured logs** (level via `DRIFTLAB_LOG_LEVEL` or CLI), **dataset fingerprints**, and UTC **run metadata** in `drift_summary.json`.
 
 ## Core Features
 
@@ -26,6 +26,7 @@ DriftLab is a comprehensive machine learning monitoring solution designed to det
 - **Implementation**: Custom implementation using `sentence-transformers` library with `all-MiniLM-L6-v2` model
 
 ### 3. **Data Schema Validation & Quality Checks**
+- **Loaders**: CSV via `read_csv`; Parquet via `read_parquet` when **`pyarrow`** is installed
 - **Column type mapping**: Support for numerical, categorical, text, and timestamp columns
 - **Required column validation**: Ensures all required columns are present
 - **Empty column detection**: Identifies completely empty columns
@@ -56,15 +57,18 @@ DriftLab is a comprehensive machine learning monitoring solution designed to det
   - Prevents false positives from transient drift
 - **Alert severity levels**: Critical alerts for actionable drift detection
 - **JSON export**: Machine-readable alert format for CI/CD integration
+- **Separate persistence store**: Feature drift streaks are stored in `persistence_history_file` (default `.driftlab_persistence.json`), **not** in the threshold calibrator history file, so JSON on disk stays consistent.
 - **Implementation**: Custom alert rules with persistence tracking using JSON-based history storage
 
 ### 6. **Config-Driven Architecture**
-- **YAML configuration files** for flexible pipeline integration
-- **Column type mapping** configuration
-- **Text column specification** for text drift analysis
-- **Alert rule configuration** (thresholds, consecutive runs)
-- **History file configuration** for threshold calibration
-- **Implementation**: YAML parsing using `pyyaml`
+- **YAML configuration** merged over **built-in defaults** (nested keys are deep-merged)
+- **Column type mapping**, **text columns**, **prediction columns** (model scores / labels), optional **Evidently `column_mapping`** (`numerical_features`, `categorical_features`, etc.)
+- **Alert settings**: thresholds, consecutive runs
+- **`history_file`**: append-only list of metric snapshots for threshold calibration
+- **`persistence_history_file`**: per-feature drift streak booleans (must differ from `history_file`)
+- **Optional `prometheus_textfile`**: write `drift_metrics.prom` next to the JSON summary
+- **`fingerprint_sample_rows`**: rows hashed into `fingerprints.*.sample_sha256` (use `0` for counts/dtypes only)
+- **Implementation**: `pyyaml` + `driftlab.config_loader`
 
 ### 7. **Synthetic Data Generator**
 - **Controlled drift generation** for testing and demos
@@ -75,11 +79,15 @@ DriftLab is a comprehensive machine learning monitoring solution designed to det
 - **Implementation**: Custom generator using `numpy` and `pandas`
 
 ### 8. **Production-Ready Infrastructure**
-- **Docker support**: Containerized deployment with Dockerfile
-- **CI/CD integration**: GitHub Actions workflow for automated testing
-- **Unit tests**: Test suite for schema validation and profiles
-- **Modular architecture**: Plugin-based design with Profile and AlertRule interfaces
-- **CLI interface**: Command-line tool for easy integration
+- **Docker**: Image runs as non-root user `drift` (uid 10001); build installs `driftlab[parquet]` for Parquet I/O
+- **CI/CD**: GitHub Actions runs `pytest` (failures fail the job), generates synthetic data, and runs a full drift job
+- **Unit tests**: Schema, profiles, load, config, fingerprints, prediction drift, Prometheus export, alerts, validation
+- **Modular architecture**: `Profile` and `AlertRule` interfaces; atomic JSON writes for summaries
+- **CLI**: `run`, `generate`, `validate` via `driftlab` or `python -m driftlab.cli`; `python -m driftlab.run …` delegates to `run`
+
+## Prediction drift profile
+
+Configure **`prediction_columns`** in YAML with model outputs (probabilities, logits, or predicted labels). For numeric columns, DriftLab combines a normalized mean shift with a histogram-overlap proxy; for categorical-like columns, it uses a total-variation distance between class proportions. Metrics appear in `drift_summary.json` under keys like `{column}_prediction_drift`.
 
 ## Technologies & Libraries Used
 
@@ -90,6 +98,9 @@ DriftLab is a comprehensive machine learning monitoring solution designed to det
 - **pyyaml** (>=5.4.0): YAML configuration file parsing
 - **sentence-transformers** (>=2.2.0): Text embedding generation for semantic drift detection
 - **scikit-learn** (>=1.0.0): Machine learning utilities (used by Evidently and sentence-transformers)
+
+### Optional
+- **`pyarrow`** (via `pip install driftlab[parquet]` or `pip install -e ".[parquet]"`): Parquet input in `load_dataframe`
 
 ### Architecture Components
 - **Plugin Architecture**: Abstract base classes (`Profile`, `AlertRule`) for extensibility
@@ -102,42 +113,46 @@ DriftLab is a comprehensive machine learning monitoring solution designed to det
 ```
 driftlab/
 ├── configs/              # YAML configuration files
-│   └── demo.yaml        # Example configuration
+│   └── demo.yaml         # Example configuration
 ├── data/                 # Datasets directory
 │   ├── reference/        # Reference/baseline datasets
 │   ├── current/          # Current datasets to compare
 │   └── synthetic/        # Synthetic data generator
 │       ├── __init__.py
-│       └── generate.py  # Data generation functions
+│       └── generate.py
 ├── driftlab/             # Main package
-│   ├── io/               # Data I/O and validation
-│   │   ├── load.py      # CSV loading utilities
-│   │   └── schema.py    # Schema validation and quality checks
-│   ├── profiles/         # Drift profiling modules
-│   │   ├── base.py      # Profile interface
-│   │   ├── tabular.py   # Tabular drift profile
-│   │   └── text.py      # Text drift profile
-│   ├── reports/          # Report generation
-│   │   ├── evidently_report.py  # Evidently integration
-│   │   └── render.py    # JSON report rendering
-│   ├── alerts/           # Alert system
-│   │   ├── base.py      # AlertRule interface
-│   │   ├── rules.py     # Alert rule implementations
-│   │   └── thresholds.py # Threshold calibration
-│   ├── cli.py           # Command-line interface
-│   ├── run.py           # Main analysis runner
-│   └── __main__.py      # Module entry point
+│   ├── io/
+│   │   ├── load.py       # CSV + Parquet loading
+│   │   └── schema.py     # Schema validation and quality checks
+│   ├── profiles/
+│   │   ├── base.py
+│   │   ├── tabular.py
+│   │   ├── text.py
+│   │   └── prediction.py # Score / label drift
+│   ├── reports/
+│   │   ├── evidently_report.py
+│   │   ├── render.py     # Atomic JSON writes
+│   │   └── prometheus_export.py
+│   ├── alerts/
+│   │   ├── base.py
+│   │   ├── rules.py
+│   │   └── thresholds.py
+│   ├── config_loader.py  # YAML + deep-merge defaults
+│   ├── fingerprint.py    # Dataset fingerprints for manifests
+│   ├── logutil.py        # DRIFTLAB_LOG_LEVEL / basicConfig
+│   ├── validate_datasets.py  # Schema-only validation API
+│   ├── cli.py
+│   ├── run.py
+│   └── __main__.py
 ├── reports/              # Generated reports (gitignored)
-├── tests/                # Unit tests
-│   ├── test_schema.py
-│   └── test_profiles.py
-├── .github/
-│   └── workflows/
-│       └── ci.yml        # CI/CD pipeline
-├── Dockerfile           # Docker configuration
-├── requirements.txt     # Python dependencies
-├── setup.py             # Package setup
-└── README.md            # This file
+├── tests/                # Unit tests (schema, profiles, load, config, …)
+├── .github/workflows/
+│   └── ci.yml
+├── Dockerfile
+├── .dockerignore
+├── requirements.txt
+├── setup.py
+└── README.md
 ```
 
 ## Quick Start
@@ -162,11 +177,7 @@ This generates:
 - `reports/run_001/drift_report.html` - Interactive HTML report
 - `reports/run_001/drift_summary.json` - Alert-ready JSON output
 
-The command will print alerts like:
-```
-ALERT: drift in payload_bytes exceeded threshold
-ALERT: drift in run_duration_ms exceeded threshold
-```
+Logs use a structured line format; **critical** alerts are emitted at **WARNING** level. Override verbosity with **`DRIFTLAB_LOG_LEVEL`** or CLI **`-v`** (DEBUG) / **`-q`** (WARNING only).
 
 ## Usage Examples
 
@@ -174,6 +185,7 @@ ALERT: drift in run_duration_ms exceeded threshold
 
 ```bash
 python -m driftlab.run --ref data/reference/ref.csv --cur data/current/cur.csv --out reports/run_001/
+# equivalent: driftlab run --ref ... --cur ... --out ...
 ```
 
 ### With Configuration File
@@ -182,28 +194,45 @@ python -m driftlab.run --ref data/reference/ref.csv --cur data/current/cur.csv -
 python -m driftlab.run --config configs/demo.yaml
 ```
 
+### Verbose / quiet logging and CI exit codes
+
+```bash
+driftlab run --config configs/demo.yaml -v
+driftlab run --ref data/reference/ref.csv --cur data/current/cur.csv --out reports/out/ --fail-on-critical
+# exits with code 2 if any critical alert fires (useful for gating CI)
+```
+
+### Parquet inputs
+
+Reference and current paths may be **`.parquet`** or **`.pq`** when **`pyarrow`** is installed (`pip install driftlab[parquet]`).
+
+### Schema-only validation (no drift run)
+
+```bash
+driftlab validate --ref data/reference/ref.csv --cur data/current/cur.csv --config configs/demo.yaml
+driftlab validate --ref data/reference/ref.csv --cur data/current/cur.csv --config configs/demo.yaml --json
+# exit code 1 if validation fails; optional --json for automation
+```
+
 ### Using Docker
 
 ```bash
-# Build image
 docker build -t driftlab .
 
-# Run analysis
-docker run -v $(pwd)/data:/app/data -v $(pwd)/reports:/app/reports driftlab \
+# Container runs as user `drift` (uid 10001); mount data and reports
+docker run -u drift -v $(pwd)/data:/app/data -v $(pwd)/reports:/app/reports driftlab \
   python -m driftlab.run --ref data/reference/ref.csv --cur data/current/cur.csv --out reports/run_001/
 ```
 
 ## Configuration
 
-Example `configs/demo.yaml`:
+Example `configs/demo.yaml` (see repository file for comments):
 
 ```yaml
-# Input file paths
 input:
   reference: data/reference/ref.csv
   current: data/current/cur.csv
 
-# Column type mapping
 column_types:
   payload_bytes: numerical
   run_duration_ms: numerical
@@ -212,38 +241,48 @@ column_types:
   region: categorical
   log_message: text
 
-# Text columns for text drift analysis
 text_columns:
   - log_message
 
-# Alert rule settings
+# Model outputs to monitor (scores, logits, predicted labels)
+prediction_columns: []
+
+# Optional Evidently column mapping (uncomment keys as needed)
+column_mapping:
+  # numerical_features: ["payload_bytes", "run_duration_ms", "cpu_usage"]
+  # categorical_features: ["status", "region"]
+
 alerts:
   dataset_drift_threshold: 0.5
   feature_drift_threshold: 0.3
   consecutive_runs: 3
 
-# History file for threshold calibration
-history_file: .driftlab_history.json
+prometheus_textfile: false
 
-# Output settings
+# Metric snapshots for threshold calibration (JSON list)
+history_file: .driftlab_history.json
+# Per-feature drift streaks — keep separate from history_file
+persistence_history_file: .driftlab_persistence.json
+
+fingerprint_sample_rows: 5
+
 output:
   directory: reports
   format: [html, json]
 ```
+
+Optional keys for **`driftlab validate`**: `required_columns`, `timestamp_column` (same schema as `Schema` in code).
 
 ## Integration Guide
 
 ### CI/CD Integration
 
 ```bash
-# In your CI pipeline
-python -m driftlab.run --ref data/reference/ref.csv --cur data/current/cur.csv --out reports/ci_run/
+python -m driftlab.run --ref data/reference/ref.csv --cur data/current/cur.csv --out reports/ci_run/ \
+  --fail-on-critical
 
-# Check for alerts
-if grep -q "ALERT" reports/ci_run/drift_summary.json; then
-  echo "Drift detected! Failing build."
-  exit 1
-fi
+# Or inspect drift_summary.json (includes meta, fingerprints, alerts)
+python -c "import json,sys; d=json.load(open('reports/ci_run/drift_summary.json')); sys.exit(2 if any(a.get('severity')=='critical' for a in d.get('alerts',[])) else 0)"
 ```
 
 ### Cron Job
@@ -258,21 +297,27 @@ fi
 ```python
 from driftlab.run import run_drift_analysis
 
-# After model inference
-run_drift_analysis(
+summary = run_drift_analysis(
     ref_path="data/reference/ref.csv",
     cur_path="data/current/cur.csv",
     output_dir="reports/run_001/",
-    config_path="configs/production.yaml"
+    config_path="configs/production.yaml",
+    log_level=None,  # or "DEBUG"; also set DRIFTLAB_LOG_LEVEL in the environment
 )
 
-# Check alerts
-import json
-with open("reports/run_001/drift_summary.json") as f:
-    summary = json.load(f)
-    if summary.get("alerts"):
-        # Trigger notification
-        send_alert(summary["alerts"])
+# summary is the same dict written to drift_summary.json
+for alert in summary.get("alerts", []):
+    if alert.get("severity") == "critical":
+        send_alert(alert)
+```
+
+Quick schema gate without a full run:
+
+```python
+from driftlab.validate_datasets import validate_pair
+
+result = validate_pair("ref.csv", "cur.csv", "configs/production.yaml")
+assert result["valid"]
 ```
 
 ## Output Format
@@ -286,24 +331,29 @@ Interactive HTML report with:
 
 ### JSON Summary
 Machine-readable JSON with:
-- Run metadata (run_id, paths, timestamps)
-- Validation results (schema validation, quality metrics)
-- Drift metrics (dataset drift score, column drift scores, text drift metrics)
-- Alert list (severity, message, metric name, value, threshold)
-- Report paths (HTML and JSON locations)
+- **`meta`**: `driftlab_version`, `started_at`, `completed_at` (UTC ISO-8601)
+- **`fingerprints`**: reference/current row counts, column dtypes, optional `sample_sha256` for the first N rows
+- **`run_id`**, **`reference_path`**, **`current_path`**
+- **Validation** (schema + quality metrics per dataset)
+- **Metrics**: tabular, text, prediction drift, Evidently dataset/column drift
+- **Alerts**: severity, message, metric name, value, threshold
+- **`reports`**: `html`, `json`, and **`prometheus`** path when `prometheus_textfile` is enabled
+
+Written **atomically** (temp file + replace) to avoid partial JSON on failure.
 
 ## Development
 
 ```bash
-# Run tests
+pip install -r requirements.txt
+pip install pytest pytest-cov
 pytest tests/ -v
 
-# Generate demo data
 python -m driftlab.cli generate
-
-# Run demo
 python -m driftlab.run --ref data/reference/ref.csv --cur data/current/cur.csv --out reports/demo/
+driftlab validate --ref data/reference/ref.csv --cur data/current/cur.csv --config configs/demo.yaml
 ```
+
+Current package version: **0.2.0** (`driftlab.__version__` / `setup.py`).
 
 ## License
 
