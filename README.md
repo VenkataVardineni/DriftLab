@@ -80,8 +80,7 @@ DriftLab detects data drift in production ML systems. It supports **CSV and Parq
 
 ### 8. **Production-Ready Infrastructure**
 - **Docker**: Image runs as non-root user `drift` (uid 10001); build installs `driftlab[parquet]` for Parquet I/O
-- **CI/CD**: GitHub Actions runs `pytest` (failures fail the job), generates synthetic data, and runs a full drift job
-- **Unit tests**: Schema, profiles, load, config, fingerprints, prediction drift, Prometheus export, alerts, validation
+- **Unit tests**: Run `pytest tests/` locally; covers schema, profiles, load, config, fingerprints, prediction drift, Prometheus export, alerts, validation
 - **Modular architecture**: `Profile` and `AlertRule` interfaces; atomic JSON writes for summaries
 - **CLI**: `run`, `generate`, `validate` via `driftlab` or `python -m driftlab.cli`; `python -m driftlab.run …` delegates to `run`
 
@@ -146,8 +145,6 @@ driftlab/
 │   └── __main__.py
 ├── reports/              # Generated reports (gitignored)
 ├── tests/                # Unit tests (schema, profiles, load, config, …)
-├── .github/workflows/
-│   └── ci.yml
 ├── Dockerfile
 ├── .dockerignore
 ├── requirements.txt
@@ -275,13 +272,14 @@ Optional keys for **`driftlab validate`**: `required_columns`, `timestamp_column
 
 ## Integration Guide
 
-### CI/CD Integration
+### Pipeline integration
+
+Use in your own CI or release pipeline (example):
 
 ```bash
 python -m driftlab.run --ref data/reference/ref.csv --cur data/current/cur.csv --out reports/ci_run/ \
   --fail-on-critical
 
-# Or inspect drift_summary.json (includes meta, fingerprints, alerts)
 python -c "import json,sys; d=json.load(open('reports/ci_run/drift_summary.json')); sys.exit(2 if any(a.get('severity')=='critical' for a in d.get('alerts',[])) else 0)"
 ```
 
