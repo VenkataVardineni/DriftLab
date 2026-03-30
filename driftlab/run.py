@@ -7,6 +7,7 @@ import pandas as pd
 
 from driftlab import __version__
 from driftlab.logutil import configure_logging, get_logger
+from driftlab.fingerprint import fingerprint_pair
 from driftlab.io.load import load_dataframe
 from driftlab.io.schema import Schema
 from driftlab.profiles.tabular import TabularProfile
@@ -48,6 +49,8 @@ def run_drift_analysis(
     # Load datasets
     ref_df = load_dataframe(ref_path)
     cur_df = load_dataframe(cur_path)
+    fp_rows = int(config.get("fingerprint_sample_rows", 5) or 0)
+    fingerprints = fingerprint_pair(ref_df, cur_df, sample_rows=fp_rows)
     
     # Schema validation
     column_types = config.get('column_types', {})
@@ -130,6 +133,7 @@ def run_drift_analysis(
             "started_at": started_at,
             "completed_at": completed_at,
         },
+        "fingerprints": fingerprints,
         "run_id": output_path.name,
         "reference_path": ref_path,
         "current_path": cur_path,

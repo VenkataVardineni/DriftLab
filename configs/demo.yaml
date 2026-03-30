@@ -41,6 +41,9 @@ history_file: .driftlab_history.json
 # Feature drift persistence ring buffer (per-column booleans) — must differ from history_file
 persistence_history_file: .driftlab_persistence.json
 
+# Rows hashed into fingerprints.sample_sha256 (0 = dtype/count only)
+fingerprint_sample_rows: 5
+
 # Output settings
 output:
   directory: reports
