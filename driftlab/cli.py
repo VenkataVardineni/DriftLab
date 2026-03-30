@@ -16,6 +16,13 @@ def main():
     run_parser.add_argument('--cur', help='Current dataset path (overrides config)')
     run_parser.add_argument('--out', help='Output directory (overrides config)')
     run_parser.add_argument('--config', help='Config file path (YAML)')
+    run_parser.add_argument('-v', '--verbose', action='store_true', help='DEBUG logging')
+    run_parser.add_argument('-q', '--quiet', action='store_true', help='WARNING logging only')
+    run_parser.add_argument(
+        '--fail-on-critical',
+        action='store_true',
+        help='Exit with code 2 if any critical alert is raised',
+    )
     
     # Generate command
     gen_parser = subparsers.add_parser('generate', help='Generate synthetic drift data')
@@ -42,13 +49,25 @@ def main():
         
         if not ref_path or not cur_path:
             parser.error("--ref and --cur are required, or provide --config with input paths")
-        
-        run_drift_analysis(
+
+        if args.verbose and args.quiet:
+            parser.error("use either --verbose or --quiet, not both")
+
+        log_level = "DEBUG" if args.verbose else ("WARNING" if args.quiet else None)
+
+        summary = run_drift_analysis(
             ref_path=ref_path,
             cur_path=cur_path,
             output_dir=output_dir,
-            config_path=args.config
+            config_path=args.config,
+            log_level=log_level,
         )
+
+        if args.fail_on_critical:
+            critical = [a for a in summary.get("alerts", []) if a.get("severity") == "critical"]
+            if critical:
+                print(f"Exiting: {len(critical)} critical alert(s)", file=sys.stderr)
+                sys.exit(2)
     elif args.command == 'generate':
         import sys
         from pathlib import Path
