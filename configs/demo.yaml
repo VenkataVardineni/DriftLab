@@ -19,6 +19,9 @@ column_types:
 text_columns:
   - log_message
 
+# Optional: model scores / predicted labels to track output drift
+prediction_columns: []
+
 # Evidently column mapping (optional)
 column_mapping:
   # numerical_features: ["payload_bytes", "run_duration_ms", "cpu_usage"]

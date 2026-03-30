@@ -11,6 +11,7 @@ from driftlab.fingerprint import fingerprint_pair
 from driftlab.io.load import load_dataframe
 from driftlab.io.schema import Schema
 from driftlab.profiles.tabular import TabularProfile
+from driftlab.profiles.prediction import PredictionProfile
 from driftlab.profiles.text import TextProfile
 from driftlab.reports.evidently_report import generate_evidently_report
 from driftlab.reports.render import save_json_report
@@ -84,7 +85,11 @@ def run_drift_analysis(
     
     text_profile = TextProfile(text_columns=text_columns)
     text_results = text_profile.run(ref_df, cur_df)
-    
+
+    prediction_columns = config.get("prediction_columns") or []
+    prediction_profile = PredictionProfile(prediction_columns=prediction_columns)
+    prediction_results = prediction_profile.run(ref_df, cur_df)
+
     # Generate Evidently report (only on non-text columns)
     evidently_results = generate_evidently_report(
         ref_df_tabular, cur_df_tabular, output_dir, column_mapping=column_mapping
@@ -94,7 +99,8 @@ def run_drift_analysis(
     all_metrics = {
         **tabular_results.get("metrics", {}),
         **text_results.get("metrics", {}),
-        **evidently_results.get("metrics", {})
+        **prediction_results.get("metrics", {}),
+        **evidently_results.get("metrics", {}),
     }
     
     # Setup threshold calibrator
