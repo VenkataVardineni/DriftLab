@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 import pandas as pd
 
+from driftlab.logutil import configure_logging, get_logger
 from driftlab.io.load import load_dataframe
 from driftlab.io.schema import Schema
 from driftlab.profiles.tabular import TabularProfile
@@ -18,17 +19,22 @@ def run_drift_analysis(
     ref_path: str,
     cur_path: str,
     output_dir: str,
-    config_path: Optional[str] = None
+    config_path: Optional[str] = None,
+    log_level: Optional[str] = None,
 ) -> None:
     """
     Run complete drift analysis pipeline.
-    
+
     Args:
         ref_path: Path to reference dataset
         cur_path: Path to current dataset
         output_dir: Output directory for reports
         config_path: Optional config file path
+        log_level: Optional logging level name (DEBUG, INFO, …); overrides DRIFTLAB_LOG_LEVEL
     """
+    configure_logging(log_level)
+    logger = get_logger(__name__)
+
     # Load configuration if provided
     config = {}
     if config_path:
@@ -133,29 +139,25 @@ def run_drift_analysis(
     
     save_json_report(summary, str(output_path / "drift_summary.json"))
     
-    # Print alerts
-    print(f"\n=== Drift Analysis Complete ===")
-    print(f"Report saved to: {output_path}")
-    print(f"HTML report: {evidently_results.get('html_path')}")
-    print(f"JSON summary: {output_path / 'drift_summary.json'}")
-    
+    logger.info("Drift analysis complete; output_dir=%s", output_path)
+    logger.info("HTML report: %s", evidently_results.get("html_path"))
+    logger.info("JSON summary: %s", output_path / "drift_summary.json")
+
     if all_alerts:
         alert_messages = []
         for alert in all_alerts:
             if alert.get("severity") == "critical":
                 metric_name = alert.get("metric_name", "unknown")
                 message = alert.get("message", "Drift detected")
-                # Format for specific columns
                 if "payload_bytes" in str(metric_name) or "run_duration_ms" in str(metric_name):
                     alert_messages.append(f"ALERT: drift in {metric_name} exceeded threshold")
                 else:
                     alert_messages.append(f"ALERT: {message}")
-        
+
         if alert_messages:
-            print(f"\n=== Alerts ({len(alert_messages)}) ===")
-            print("\n".join(alert_messages))
+            logger.warning("Alerts (%d):\n%s", len(alert_messages), "\n".join(alert_messages))
     else:
-        print("\nNo alerts triggered.")
+        logger.info("No alerts triggered.")
 
 
 if __name__ == "__main__":
