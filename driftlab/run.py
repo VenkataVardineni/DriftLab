@@ -87,6 +87,7 @@ def run_drift_analysis(
     
     # Setup threshold calibrator
     history_file = config.get('history_file', '.driftlab_history.json')
+    persistence_file = config.get('persistence_history_file', '.driftlab_persistence.json')
     calibrator = ThresholdCalibrator(history_file=history_file)
     
     # Setup alert rules with calibrated thresholds
@@ -100,7 +101,7 @@ def run_drift_analysis(
             threshold=alert_config.get('feature_drift_threshold'),
             consecutive_runs=alert_config.get('consecutive_runs', 3),
             calibrator=calibrator,
-            history_file=history_file
+            history_file=persistence_file
         )
     ]
     

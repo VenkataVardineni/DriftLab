@@ -76,7 +76,8 @@ class FeatureDriftPersistenceRule(AlertRule):
         self.threshold = threshold
         self.consecutive_runs = consecutive_runs
         self.calibrator = calibrator
-        self.history_file = history_file or ".driftlab_history.json"
+        # Separate from ThresholdCalibrator history (metrics list) to avoid corrupting JSON.
+        self.history_file = history_file or ".driftlab_persistence.json"
     
     def _load_persistence_history(self) -> Dict[str, List[bool]]:
         """Load persistence history for features."""
