@@ -39,6 +39,9 @@ alerts:
   feature_drift_threshold: 0.3
   consecutive_runs: 3
 
+# Optional Prometheus textfile metrics (node_exporter textfile collector)
+prometheus_textfile: false
+
 # History file for threshold calibration (list of metric snapshots)
 history_file: .driftlab_history.json
 # Feature drift persistence ring buffer (per-column booleans) — must differ from history_file

@@ -155,7 +155,17 @@ def run_drift_analysis(
         }
     }
 
+    prom_path: Optional[str] = None
+    if config.get("prometheus_textfile", False):
+        prom_path = str(output_path / "drift_metrics.prom")
+        summary.setdefault("reports", {})["prometheus"] = prom_path
+
     save_json_report(summary, str(output_path / "drift_summary.json"))
+
+    if prom_path:
+        from driftlab.reports.prometheus_export import write_prometheus_textfile
+
+        write_prometheus_textfile(summary, prom_path)
     
     logger.info("Drift analysis complete; output_dir=%s", output_path)
     logger.info("HTML report: %s", evidently_results.get("html_path"))
