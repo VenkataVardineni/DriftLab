@@ -29,7 +29,15 @@ def main():
     gen_parser.add_argument('--output-dir', default='data', help='Output directory')
     gen_parser.add_argument('--n-samples', type=int, default=1000, help='Number of samples')
     gen_parser.add_argument('--seed', type=int, default=42, help='Random seed')
-    
+
+    val_parser = subparsers.add_parser(
+        "validate", help="Validate datasets against schema (no drift analysis)"
+    )
+    val_parser.add_argument("--ref", required=True, help="Reference dataset path")
+    val_parser.add_argument("--cur", required=True, help="Current dataset path")
+    val_parser.add_argument("--config", help="YAML config path")
+    val_parser.add_argument("--json", action="store_true", help="Emit JSON summary")
+
     args = parser.parse_args()
     
     if args.command == 'run':
@@ -72,6 +80,15 @@ def main():
         sys.path.insert(0, str(project_root))
         from data.synthetic.generate import generate_demo_data
         generate_demo_data(args.output_dir, args.n_samples, args.seed)
+    elif args.command == "validate":
+        from driftlab.validate_datasets import main as validate_main
+
+        vargs = ["validate", "--ref", args.ref, "--cur", args.cur]
+        if args.config:
+            vargs.extend(["--config", args.config])
+        if args.json:
+            vargs.append("--json")
+        sys.exit(validate_main(vargs[1:]))
     else:
         parser.print_help()
         sys.exit(1)
