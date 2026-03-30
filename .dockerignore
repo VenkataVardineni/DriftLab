@@ -1,0 +1,15 @@
+.git
+.github
+.pytest_cache
+__pycache__
+*.pyc
+*.pyo
+.reports
+reports
+.coverage
+coverage.xml
+.driftlab_history.json
+.driftlab_persistence.json
+*.egg-info
+.venv
+venv

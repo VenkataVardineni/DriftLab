@@ -1,25 +1,21 @@
-FROM python:3.9-slim
+FROM python:3.10-slim
 
 WORKDIR /app
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements
 COPY requirements.txt .
-
-# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
 COPY . .
+RUN pip install --no-cache-dir -e ".[parquet]"
 
-# Install driftlab package
-RUN pip install -e .
+RUN useradd --create-home --uid 10001 drift \
+    && chown -R drift:drift /app
+USER drift
 
-# Set default command
 CMD ["python", "-m", "driftlab.cli", "--help"]
 
